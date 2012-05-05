@@ -1,0 +1,942 @@
+;;; -*- asm -*-
+;;; SuperMON - by Jim Butterfield.
+;;;
+;;; Believed to be free to distribute and modify, as this was
+;;; happening with Jim's permission while he was alive.
+;;;
+;;; Modified to suit the stm6502 simulator by Chris Baird
+;;; <cjb@brushtail.apana.org.au> May 2012
+
+.feature labels_without_colons
+
+pch      = $01			;these must remain in order
+pcl      = $02
+flgs     = $03
+acc      = $04
+xr       = $05
+yr       = $06
+sp       = $07
+
+tmp0     = $08			;$c1 SIZE=2 (indirect pointer)
+tmp2     = $0A			;$c3 SIZE=2 (indirect pointer)
+psav     = $0C			;$20 SIZE=2 (not used indirectly)
+aflg     = $0E			;$28 SIZE=2 (not used indirectly)
+savx     = $10			;$1c
+tmpc     = $11			;$1d
+nemo     = $12			;$1e
+length   = $13			;$1f
+wrap     = $14			;$26 SIZE=1
+acmd     = $15			;$2a SIZE=1
+
+inbuf    = $0100		;SIZE=1
+stage    = $0101
+
+        .org $F800
+
+DISLINES = 23
+
+				; ** initialization **
+super:	ldx #$FF
+	sei
+	txs
+	cld
+	lda #<break
+        sta $FFFE
+        lda #>break
+        sta $FFFF
+        brk
+
+				; ** break entry **
+break:
+	;; since this isn't a commodore whose rom has already
+	;; pushed registers and flags onto the stack, changes
+	;; were made here..
+
+	cld
+        cli
+
+	sta acc
+	stx xr
+	sty yr
+
+        pla			;now this really was on the stack..
+        sta flgs
+
+        pla			;and PC+2 was there too..
+        tax
+        pla
+        tay
+        sec
+        txa
+        sbc #$02
+        sta pcl
+        tya
+        sbc #0
+        sta pch
+
+        tsx
+        stx sp
+        jsr crlf
+        ldx #'B'
+        lda #'*'
+        jsr wrtwo
+        lda #'R'
+        bne s0			;fake an R command
+
+inctmp:	inc tmp0
+        bne setwr
+        inc tmp0+1
+        bne setwr
+        inc wrap
+setwr:	rts
+
+wrt:	sta $fff0
+	rts
+
+rdt:	lda $fff0
+	and #127
+	cmp #'a'
+	bcc rdt1		;bcc=blt
+	cmp #'z'+1
+	bcs rdt1		;bcs=bge
+	sbc #31
+rdt1:	jmp wrt
+
+				; ** read character **
+rdoc:	jsr rdt
+        cmp #$0d
+        bne setwr
+        pla
+        pla
+				; ** prompt for command  **
+strt:	lda #0
+        sta wrap
+        lda #$0d
+        jsr wrt
+        ;lda #'>'
+        ;jsr wrtwo
+				; ** check input command **
+st1:	jsr rdoc
+        cmp #'.'
+        beq st1
+        cmp #' '
+        beq st1
+s0:	ldx #(kaddr-keyw-1)	 ;xxxcjb
+s1:	cmp keyw,x
+        bne s2
+        txa
+        asl a
+        tax
+        lda kaddr+1,x
+        pha
+        lda kaddr,x
+        pha
+        rts
+s2:	dex
+        bpl s1
+        jmp error
+                          ; ** set pc addrress **
+putp     lda tmp0
+         sta pcl
+         lda tmp0+1
+         sta pch
+         rts
+                          ; ** memory display **
+dm:	lda #$08
+dm0:	sta tmpc
+        ldy #0
+dm1:	jsr space
+        lda (tmp0),y
+        jsr wrob
+        jsr inctmp
+        dec tmpc
+        bne dm1
+        rts
+                          ; ** change memory **
+byte     jsr rdob
+         bcc by3
+         ldx #0
+         sta (tmp0,x)
+         cmp (tmp0,x)
+         beq by3
+         jmp error
+by3      jsr inctmp
+         dec tmpc
+         rts
+                          ; ** set pc reg addrs **
+setr     lda #<(pch+2)
+         sta tmp0
+         lda #>(pch+2)
+         sta tmp0+1
+         lda #5
+         rts
+                          ; ** write display prompt **
+altrit   tya
+         pha
+         jsr crlf
+         pla
+         ;ldx #'>'
+         ;jmp wrtwo
+         jmp wrt
+                          ; **display registers **
+dsplyr:	ldx #0
+d2:	lda regk,x
+        jsr wrt
+        inx
+        cpx #(regkend-regk)
+        bne d2
+        ldy #';'
+        jsr altrit
+        lda pch
+        jsr wrob
+        lda pcl
+        jsr wrob
+        jsr setr
+        jsr dm0
+        beq a9
+                          ; ** display memory **
+dsplym   jsr rdoc
+         jsr rdoa
+         bcc errs1
+         lda tmp0
+         sta tmp2
+         lda tmp0+1
+         sta tmp2+1
+         jsr rdt
+         cmp #$0d
+         beq dsp1
+         jsr rdoa
+         bcc errs1
+         jsr t2t2
+dsp1     ;jsr stop1
+         ;beq a9
+         ldx wrap
+         bne a9
+         jsr diffp
+         bcc a9
+         ldy #':'
+         jsr altrit
+         jsr wroa
+         jsr dm
+         beq dsp1
+errs1    jmp error
+
+                          ; ** alter memory **
+altr     jsr rdoa
+         bcc al2
+         jsr putp
+al2      jsr setr
+         bne a0
+altm     jsr rdoa
+         bcc errs1
+a4       lda #$08
+a0       sta tmpc
+a5       jsr rdoc
+         jsr byte
+         bne a5
+a9       jmp strt
+
+				; ** .go **
+go:	jsr rdt
+        cmp #$0d
+        beq g1
+        cmp #' '
+        bne errs1
+        jsr rdoa
+        bcc g1
+        jsr putp
+
+g1:	ldx sp
+        txs
+        sei
+        lda pch
+        pha
+        lda pcl
+        pha
+        lda flgs
+        pha
+        lda acc
+        ldx xr
+        ldy yr
+        rti
+				; ** back to basic **
+exit:	brk			;xxxcjb
+
+                          ; ** print hex byte **
+wroa:	lda tmp0+1
+        jsr wrob
+        lda tmp0
+wrob:	pha
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        jsr ascii
+        tax
+        pla
+        and #$0f
+        jsr ascii
+                          ; ** print two chars **
+wrtwo    pha
+         txa
+         jsr wrt
+         pla
+         jmp wrt
+                          ; ** convert to ascii **
+ascii    ora #$30
+         cmp #'9'+1
+         bcc asc1
+         adc #$06
+asc1     rts
+                          ; ** swap tmp0, tmp2 **
+t2t2     ldx #$02
+t2t21    lda tmp0-1,x
+         pha
+         lda tmp2-1,x
+         sta tmp0-1,x
+         pla
+         sta tmp2-1,x
+         dex
+         bne t2t21
+         rts
+                          ; ** read hex address **
+rdoa     jsr rdob
+rdoa1    bcc rdoa2
+         sta tmp0+1
+rdoa2    jsr rdob
+         bcc rdexit
+         sta tmp0
+rdexit   rts
+rdob     lda #0
+                          ; ** scan for hex byte **
+         sta acmd
+         jsr rdoc
+rdob1    cmp #' '
+         bne rdob2
+         jsr rdoc
+         cmp #' '
+         bne rdob3
+         clc
+         rts
+                          ; ** read hex byte **
+rdob2    jsr hexit
+         asl a
+         asl a
+         asl a
+         asl a
+         sta acmd
+         jsr rdoc
+rdob3    jsr hexit
+         ora acmd
+         sec
+         rts
+                          ; ** convert from hex **
+hexit    cmp #'9'+1
+         bcc hex08
+         adc #$08
+hex08    and #$0f
+         rts
+                          ; ** decrement t0,t2 **
+spread   = tmp2-tmp0
+dect2    ldx #<spread
+         .byte $2c
+dect0    ldx #0
+         ldy tmp0,x
+         bne dec20
+         ldy tmp0+1,x
+         bne dec10
+         inc wrap
+dec10    dec tmp0+1,x
+dec20    dec tmp0,x
+ret1     rts
+                          ; ** get a non space **
+gtchr    jsr rdoc
+         cmp #' '
+         beq gtchr
+         rts
+                          ; ** get address **
+input    lda #0
+         sta inbuf
+         jsr gtchr
+         jsr rdob1
+         jsr rdoa1
+         bcc error
+         rts
+                          ; ** get address **
+get2b    jsr rdoc
+         jsr rdoa
+         bcs ret1
+                          ; ** error exit **
+error    ldx sp
+         txs
+         lda #'?'
+         jsr wrt
+         jmp strt
+                          ; ** print spaces **
+spacd    jsr space
+         dex
+         bne spacd
+         rts
+                          ; ** inc tmp 2 **
+ptrinc   inc tmp2
+         bne p1ov
+         inc tmp2+1
+p1ov     rts
+                          ; ** swap aflg, tmp0 **
+swap     ldx #$02
+swp1     lda tmp0-1,x
+         pha
+         lda aflg-1,x
+         sta tmp0-1,x
+         pla
+         sta aflg-1,x
+         dex
+         bne swp1
+         rts
+                          ; ** calc tmp2-tmp0-2 **
+diffb    lda tmp2
+         ldy tmp2+1
+         sec
+         sbc #2
+         bcs deck
+         dey
+         bcc deck
+                          ; ** calc aflg-tmp0 **
+diffa    lda aflg
+         ldy aflg+1
+         jmp deck
+                          ; ** calc tmp2-tmp0 **
+diffp    lda tmp2
+         ldy tmp2+1
+deck     sec
+         sbc tmp0
+         sta nemo
+         tya
+         sbc tmp0+1
+         tay
+         ora nemo
+         rts
+
+                          ; ** .transfer **
+trans    jsr input
+         jsr t2t2
+         jsr get2b
+         jsr swap
+         jsr get2b
+         jsr diffp
+         jsr t2t2
+         bcc mov2
+                          ; ** move down **
+mllp1:	ldx wrap
+        bne strt1
+        jsr diffa
+        bcc strt1
+
+        lda (tmp0,x)
+        sta (tmp2,x)
+        jsr ptrinc
+        jsr inctmp
+        bne mllp1
+                          ; ** move up **
+mov2     jsr diffa
+         clc
+         lda nemo
+         adc tmp2
+         sta tmp2
+         tya
+         adc tmp2+1
+         sta tmp2+1
+         jsr swap
+mllp2    ldx wrap
+         bne strt1
+         lda (tmp0,x)
+         sta (tmp2,x)
+         jsr diffa
+         bcs strt1
+         jsr dect2
+         jsr dect0
+         jmp mllp2
+                          ; ** .fill **
+fill     jsr input
+         jsr t2t2
+         jsr get2b
+         jsr t2t2
+         jsr rdoc
+         jsr rdob
+         bcc error2
+         sta tmpc
+flup1    ldx wrap
+         bne strt1
+         jsr diffp
+         bcc strt1
+         lda tmpc
+         sta (tmp0,x)
+         jsr inctmp
+         bne flup1
+error2   jmp error
+strt1    jmp strt
+
+				; ** .hunt **
+hunt     jsr input
+         jsr t2t2
+         jsr get2b
+         jsr t2t2
+         jsr rdoc
+         ldx #0
+         jsr rdoc
+         cmp #$27		;"'" hey, it does strings too?
+         bne nostrh
+         jsr rdoc
+hpar     sta stage,x
+         inx
+         jsr rdt
+         cmp #$0d
+         beq htgo
+         cpx #$20
+         bne hpar
+         beq htgo
+nostrh   stx inbuf
+         jsr rdob1
+         bcc error2
+hlp      sta stage,x
+         inx
+         jsr rdt
+         cmp #$0d
+         beq htgo
+         jsr rdob
+         bcc error2
+         cpx #$20
+         bne hlp
+htgo     stx savx
+         jsr crlf
+hscan    ldx #0
+         ldy #0
+hlp3     lda (tmp0),y
+         cmp stage,x
+         bne hnmtch
+         iny
+         inx
+         cpx savx
+         bne hlp3
+                          ; ** match found **
+         jsr wroa
+         jsr space
+hnmtch   jsr inctmp
+         ldx wrap
+         bne strt1
+         jsr diffp
+         bcs hscan
+         jmp strt
+                          ; ** .disassemble **
+disas    jsr input
+         sta psav
+         lda tmp0+1
+         sta psav+1
+         ldx #0
+         stx aflg
+dpag     ;lda #$93         ;clr   xxcjb
+         ;jsr wrt
+         lda #DISLINES
+         sta tmpc
+dislp    jsr diss1
+         jsr pcadj
+         sta tmp0
+         sty tmp0+1
+         dec tmpc
+         bne dislp
+         ;lda #$91         ;up  xxxcjb
+         ;jsr wrt
+         jmp strt
+                          ; ** diss 1 line **
+diss1:	ldy #','
+        jsr altrit
+        jsr space
+diss1a:	jsr wroa
+        jsr space
+        ldx #0
+        lda (tmp0,x)
+        jsr instxx
+        pha
+        jsr disvv
+        pla
+        jsr propxx
+        ldx #$06
+pradr1:	cpx #$03
+        bne pradr3
+        ldy length
+        beq pradr3
+pradr2:	lda acmd
+        cmp #$e8
+        lda (tmp0),y
+        bcs reladr
+        jsr prbyte
+        dey
+        bne pradr2
+pradr3:	asl acmd
+        bcc pradr4
+        lda char1-1,x
+        jsr chrout
+        lda char2-1,x
+        beq pradr4
+        jsr chrout
+pradr4:	dex
+        bne pradr1
+pradr5:	rts
+
+chrout:	cmp aflg
+        beq pradr5
+        jmp wrt
+
+				; ** print rel address **
+reladr   jsr pcadj3
+         tax
+         inx
+         bne prntyx
+         iny
+prntyx   tya
+         jsr prbyte
+         txa
+prbyte   stx savx
+         jsr wrob
+         ldx savx
+         rts
+
+				; ** add length+1 to pc **
+pcadj    lda length
+         sec
+pcadj3   ldy tmp0+1
+         tax
+         bpl pcadj4
+         dey
+pcadj4   adc tmp0
+         bcc rts1
+         iny
+rts1     rts
+                          ; ** check inst valid, len **
+instxx   tay
+         lsr a
+         bcc ieven
+         lsr a
+         bcs err
+         cmp #$22
+         beq err
+         and #$07
+         ora #$80
+ieven    lsr a
+         tax
+         lda mode,x
+         bcs rtmode
+         lsr a
+         lsr a
+         lsr a
+         lsr a
+rtmode   and #$0f
+         bne getfmt
+err      ldy #$80
+         lda #0
+                          ; ** get addr mode, length **
+getfmt   tax
+         lda mode2,x
+         sta acmd
+         and #$03
+         sta length
+                          ; ** extract intructn **
+         tya
+         and #$8f
+         tax
+         tya
+         ldy #$03
+         cpx #$8a
+         beq mnndx3
+mnndx1   lsr a
+         bcc mnndx3
+         lsr a
+mnndx2   lsr a
+         ora #$20
+         dey
+         bne mnndx2
+         iny
+mnndx3   dey
+         bne mnndx1
+         rts
+                          ; print bytes
+disvv    lda (tmp0),y
+         jsr prbyte
+         ldx #1
+disvl    jsr spacd
+         cpy length
+         iny
+         bcc disvv
+         ldx #$03
+         cpy #4
+         bcc disvl
+         rts
+                          ; ** print mnemonic **
+propxx   tay
+         lda mneml,y
+         sta aflg
+         lda mnemr,y
+         sta aflg+1
+prmn1    lda #0
+         ldy #$05
+prmn2    asl aflg+1
+         rol aflg
+         rol a
+         dey
+         bne prmn2
+         adc #$3f
+         jsr wrt
+         dex
+         bne prmn1
+                          ; ** print space **
+space    lda #$20
+         bne flip
+crlf     lda #$0d	  ; ** print cr
+flip     jmp wrt
+                          ; **.p disassemble **
+prin     jsr input
+         jsr t2t2
+         jsr get2b
+         jsr t2t2
+         ldx #0
+         stx aflg
+ploop    jsr crlf
+         jsr diss1a
+         jsr pcadj
+         sta tmp0
+         sty tmp0+1
+         ;jsr stop1
+         ;beq strtx
+         jsr diffp
+         bcs ploop
+strtx    jmp strt
+
+                          ; ** assemble **
+assem    jsr input
+assrp    jsr t2t2
+         stx stage+1
+         ldx #$03
+apush    jsr gtchr
+         pha
+         dex
+         bne apush
+         ldx #$03
+apull    pla
+         sec
+         sbc #$3f
+         ldy #$05
+acrun    lsr a
+         ror stage+1
+         ror stage
+         dey
+         bne acrun
+         dex
+         bne apull
+         ldx #$02
+ainp     jsr rdt
+         cmp #$0d
+         beq aret
+         cmp #$20
+         beq ainp
+         jsr ahex
+         bcs stone
+         jsr rdob2
+         ldy tmp0
+         sty tmp0+1
+         sta tmp0
+         lda #$30
+         sta stage,x
+         inx
+stone    sta stage,x
+         inx
+         bne ainp
+aret     stx aflg
+         ldx #0
+         stx wrap
+         beq atry
+abump    inc wrap
+	bne atry		;xxxcjb
+	jmp aerr		;couldn't do a branch..
+
+atry     ldx #0
+         stx tmpc
+         lda wrap
+         jsr instxx
+         ldx acmd
+         stx aflg+1
+         tax
+         ldy mneml,x
+         lda mnemr,x
+         jsr achek2
+         bne abump
+         ldx #$06
+aoprnd   cpx #$03
+         bne ashf
+         ldy length
+         beq ashf
+arsc     lda acmd
+         cmp #$e8
+         lda #$30
+         bcs arel1
+         jsr acheck
+         bne abump
+         jsr achick
+         bne abump
+         dey
+         bne arsc
+ashf     asl acmd
+         bcc adex
+         ldy char2-1,x
+         lda char1-1,x
+         jsr achek2
+         bne abump
+adex     dex
+         bne aoprnd
+         beq ald
+arel1    jsr acdb1
+         bne abump
+         jsr acdb1
+         bne abump
+ald      lda aflg
+         cmp tmpc
+         bne abump
+         jsr t2t2
+         ldy length
+         beq aopset
+         lda aflg+1
+         cmp #$9d
+         bne aopnd
+         jsr diffb
+         bcc abdown
+         tya
+         bne aerr
+         lda nemo
+         bpl abran
+aerr     jmp error
+abdown   iny
+         bne aerr
+         lda nemo
+         bpl aerr
+abran    ldy length
+         bne abrel
+aopnd    lda tmp2-1,y
+abrel    sta (tmp0),y
+         dey
+         bne aopnd
+aopset   lda wrap
+         sta (tmp0),y
+         jsr pcadj
+         sta tmp0
+         sty tmp0+1
+         ldy #'A'
+         jsr altrit
+         jsr space
+         jsr wroa
+         jsr space
+         jmp assrp
+acdb1    tay
+achek2   jsr acheck
+         bne acex
+         tya
+acheck   beq acex
+achick   stx savx
+         ldx tmpc
+         cmp stage,x
+         php
+         inx
+         stx tmpc
+         ldx savx
+         plp
+acex     rts
+ahex     cmp #$30
+         bcc asx
+         cmp #$47
+         rts
+asx      sec
+         rts
+
+ ; mode table... nybble organized
+ ; 0= err  4= implied  8= zer,x   c= zer,y
+ ; 1= imm  5= acc      9= abs,x   d= rel
+ ; 2= zer  6= (ind,x)  a= abs,y
+ ; 3= abs  7= (ind),y  b= (ind)
+mode:	.byte $40,$02,$45,$03
+        .byte $d0,$08,$40,$09
+        .byte $30,$22,$45,$33
+        .byte $d0,$08,$40,$09
+        .byte $40,$02,$45,$33
+        .byte $d0,$08,$40,$09
+        .byte $40,$02,$45,$b3
+        .byte $d0,$08,$40,$09
+        .byte $00,$22,$44,$33
+        .byte $d0,$8c,$44,$00
+        .byte $11,$22,$44,$33
+        .byte $d0,$8c,$44,$9a
+        .byte $10,$22,$44,$33
+        .byte $d0,$08,$40,$09
+        .byte $10,$22,$44,$33
+        .byte $d0,$08,$40,$09
+        .byte $62,$13,$78,$a9
+
+ ;master modes
+ ;six hi-order bits  mode options
+ ;two lo-order bits  operand lengthready.
+
+mode2:	.byte $00,$21,$81,$82
+        .byte $00,$00,$59,$4d
+        .byte $91,$92,$86,$4a,$85,$9d
+
+char1:	.byte ",", ")", ",", "#", "(", "$"
+char2:	.byte "Y",  0 , "X", "$", "$",  0
+
+ ; packed mnemonics
+mneml:	.byte $1c,$8a,$1c,$23
+        .byte $5d,$8b,$1b,$a1
+        .byte $9d,$8a,$1d,$23
+        .byte $9d,$8b,$1d,$a1
+        .byte $00,$29,$19,$ae
+        .byte $69,$a8,$19,$23
+        .byte $24,$53,$1b,$23
+        .byte $24,$53,$19,$a1
+        .byte $00,$1a,$5b,$5b
+        .byte $a5,$69,$24,$24
+        .byte $ae,$ae,$a8,$ad
+        .byte $29,$00,$7c,$00
+        .byte $15,$9c,$6d,$9c
+        .byte $a5,$69,$29,$53
+        .byte $84,$13,$34,$11
+        .byte $a5,$69,$23,$a0
+
+mnemr:	.byte $d8,$62,$5a,$48
+        .byte $26,$62,$94,$88
+        .byte $54,$44,$c8,$54
+        .byte $68,$44,$e8,$94
+        .byte $00,$b4,$08,$84
+        .byte $74,$b4,$28,$6e
+        .byte $74,$f4,$cc,$4a
+        .byte $72,$f2,$a4,$8a
+        .byte $00,$aa,$a2,$a2
+        .byte $74,$74,$74,$72
+        .byte $44,$68,$b2,$32
+        .byte $b2,$00,$22,$00
+        .byte $1a,$1a,$26,$26
+        .byte $72,$72,$88,$c8
+        .byte $c4,$ca,$26,$48
+        .byte $44,$44,$a2,$c8
+
+keyw:	.byte ":;RMGTFHDPA"
+kaddr:	.word altm-1
+        .word altr-1
+        .word dsplyr-1
+        .word dsplym-1
+        .word go-1
+        .word trans-1		;"T START END DEST"
+        .word fill-1		;"F START END BYTE"
+        .word hunt-1 ;"H START END BYTE..BYTE" or "H START END 'STRING"
+        .word disas-1
+        .word prin-1
+        .word assem-1
+regk:	.byte 13,"   PC SR AC XR YR SP"
+regkend: .byte 0
+
+;;; ----------------------------------------------------------------------
