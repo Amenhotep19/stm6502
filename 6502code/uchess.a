@@ -18,8 +18,8 @@
 ; Additional code by Lee Davidson, Darryl Richter and Ken Wessen
 ; Source formatted for KRUSADER - the Replica 1 Assembler
 
-; modified for the SYM1 and the ca65 crossassembler --cjb20100909
-; ca65 symuchess.asm && ld65 -t none symuchess.o && mv a.out symchess.bin
+;;; modified for the SYM1 and the ca65 crossassembler --cjb20100909
+;;; ca65 symuchess.asm && ld65 -t none symuchess.o && mv a.out symchess.bin
 
 .feature labels_without_colons
 

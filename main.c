@@ -1,83 +1,101 @@
+// main.c -- 6502 simulator startup and control main loop.
+// Copyright (C) 2012 Chris J. Baird <cjb@brushtail.apana.org.au>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful, but
+// WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+// General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <http://www.gnu.org/licenses/>
+
+// derived from unlicenced/BSD-2clause code by Charlie Somerville
+// https://github.com/charliesome/6502
+
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
-#include <termios.h>
 
-#include <cpu.h>
-#include <vm.h>
-#include <init_6502.h>
+#include "config.h"
+#include "cpu.h"
+#include "vm.h"
+#include "init_6502.h"
+#include "usart.h"
+#include "rom.h"
 
-int send_rst = 0;
-int debug_mode = 0;
 
-void sigint_handler(int n)
+int debug_mode = 0;		/* protip: you can set this while running using gdb */
+int send_rst = 0;		/* ..maybe this as well */
+// int restore_rom = 0;
+int go_slow = 0;		/* 1000000 typical for debugging */
+
+int main(void)
 {
-	send_rst = 1;
-}
+  volatile unsigned int i;
+  unsigned char *m, *p;
+  unsigned short before_pc;
 
-int main(int argc, char** argv)
-{	
-	printf("\em");
+#if USE_USART
+  usart_init();
+#endif
+#if USE_USB_CDCACM
+  usb_cdcacm_init();
+#endif
 
-	if(argc < 2)
+  printf("\em\n\n*** STM32F4-Disco 6502 Simulator ***\n");
+
+  cpu_t* cpu = new_cpu();
+  init_6502(cpu);
+
+  send_rst = 1;
+
+  /* copy in the supermon 'rom' to the 6502 memory space */
+  m = (unsigned char *)0x2000F800;
+  p = (unsigned char *)&ROM_F800;
+  while (p < (unsigned char *)&ROM_F800_END)
+    *m++ = *p++;
+  /* set up the 6502 RESET vector */
+  m = (unsigned char *)0x2000FFFC;
+  *m = 0x00;
+  m = (unsigned char *)0x2000FFFD;
+  *m = 0xF8;
+
+
+  while (1)
+    {
+      if (send_rst)
 	{
-		fprintf(stderr, "Usage: ./6502 <image>\n");
-		return 1;
+	  cpu_rst(cpu);
+	  send_rst = 0;
 	}
 
-	if(argc > 2 && strcmp(argv[2], "-debug") == 0)
-		debug_mode = 1;
+      vm_step(cpu);
 
-	printf("** Loading image: %s... ", argv[1]);
-	FILE* img = fopen(argv[1], "r");
-	if(img == NULL)
+      if(debug_mode)
 	{
-		printf("failed.\n");
-		return 1;
+	  reg_t* r = &cpu->regs;
+
+	  printf ("PC_After:$%04x A:%02x X:%02x Y:%02x SP:01%02x "
+		  "C%c Z%c N%c V%c I%c D%c B%c\n",
+		  r->pc & 65535, r->a & 255, r->x & 255, r->y & 255, r->sp & 255,
+		  (r->flags & FCARRY ? 49 : 48),
+		  (r->flags & FZERO  ? 49 : 48),
+		  (r->flags & FNEG   ? 49 : 48),
+		  (r->flags & FOFLOW ? 49 : 48),
+		  (r->flags & FIRQ   ? 49 : 48),
+		  (r->flags & FBCD   ? 49 : 48),
+		  (r->flags & FBRK   ? 49 : 48));
 	}
 
-	cpu_t* cpu = new_cpu();
-	fread(cpu->mem, 65536, 1, img);
-	fclose(img);
-
-	printf("ok.\n");
-	
-	init_6502(cpu);
-
-	signal(SIGINT, sigint_handler);
-
-	// unbuffer stdin
-	struct termios attr;
-	tcgetattr(0, &attr);
-	attr.c_lflag &= ~ICANON;
-	attr.c_lflag &= ~ECHO;
-	tcsetattr(0, TCSANOW, &attr);
-
-	while(1)
-	{
-		vm_step(cpu);
-
-		if(send_rst)
-		{
-			// we can't call cpu_rst() directly from the signal handler, as a signal may fire mid-step.
-			cpu_rst(cpu);
-			send_rst = 0;
-		}
-
-		if(debug_mode)
-		{
-			reg_t* r = &cpu->regs;
-		
-			printf(
-			// push current cursor position, and go to (1,1)
-			"\e[s\e[1;1H"
-			// white on red
-			"\e[1;37;41m"
-			// print out status info, like registers
-			" A: %02x  X: %02x  Y: %02x  PC: $%04x  SP: %02x  Flags: %x"
-			// restore colour and pop cursor
-			"\e[m\e[u", r->a & 255, r->x & 255, r->y & 255, r->pc & 65535, r->sp & 255, r->flags & 255);
-		}
-	}
+      if (go_slow)
+	for (i = go_slow; i > 0; i--)
+	  ;
+    }
 }

@@ -1,0 +1,152 @@
+;;; -*- asm -*-
+
+	GAME = 32592
+	SERIALPORT = $FFF0
+	CUR_OUT_DEV = $BA
+
+	.org $F000
+
+RESET:	sei
+	cld
+	ldx #$FF
+	txs
+
+	lda #3
+	sta CUR_OUT_DEV
+	lda #80
+	sta $75E0		;adventure engine screen width
+
+	inx
+loop:	lda patchtable,x
+	beq gogame
+	tay
+	inx
+	lda patchtable,x
+	sta $ff00,y
+	inx
+	lda patchtable,x
+	sta $ff01,y
+	inx
+	lda patchtable,x
+	sta $ff02,y
+	inx
+	bne loop
+
+gogame:	jmp GAME
+
+;;; ----------------------------------------------------------------------
+
+NULL:	rts
+
+CHROUT:	pha
+	;; check what the output device currently is..
+	lda CUR_OUT_DEV
+	cmp #3
+	bne chro1
+	pla
+	pha
+	;; convert petscii to ascii
+	and #127
+	cmp #'a'
+	bcc out1
+	sbc #32
+	bne doout
+out1:	cmp #'Z'
+	bcs out2
+	cmp #'A'
+	bcc out2
+	adc #31
+	bne doout
+out2:	cmp #127
+	bne doout
+	lda #$63
+
+doout:	sta SERIALPORT
+chro1:	pla
+	rts
+
+GETIN:	lda SERIALPORT
+	rts
+
+;;; this sets the default output device for CHROUT; ignore everything
+;;; when .X isn't 3 (the screen). The Adams Adventure games also open
+;;; the rs232 device to a Votrax type and talk
+
+CHKOUT:	stx CUR_OUT_DEV
+	rts
+
+
+;;; ----------------------------------------------------------------------
+
+NONMI:	lda #'N'
+	sta SERIALPORT
+	lda #'M'
+	sta SERIALPORT
+	lda #'I'
+	sta SERIALPORT
+hang:	jmp hang
+
+DOBRK:	pha
+	txa
+	pha
+	tya
+	pha
+	tsx
+	lda $0104,x		;look in status to see if BRK flag set
+	and #%00010000
+	beq isbrk
+
+isirq:
+	lda #'I'
+	sta SERIALPORT
+	lda #'R'
+	sta SERIALPORT
+	lda #'Q'
+	sta SERIALPORT
+
+	pla
+	tay
+	pla
+	tax
+	pla
+	rti
+	;bne hang
+
+isbrk:	lda #'B'
+	sta SERIALPORT
+	lda #'R'
+	sta SERIALPORT
+	lda #'K'
+	sta SERIALPORT
+	bne hang
+
+;;; ----------------------------------------------------------------------
+
+patchtable:
+	.byte $BA		;$FFBA = SETLFS
+	jmp NULL
+	.byte $BD		;$FFBD = SETNAM
+	jmp NULL
+	.byte $C0		;$FFC0 = OPEN
+	jmp NULL
+	.byte $C9		;$FFC9 = CHKOUT
+	jmp CHKOUT
+	.byte $D2		;$FFD2 = CHROUT
+	jmp CHROUT
+	.byte $D5		;$FFD5 = LOAD
+	jmp NULL
+	.byte $D8		;$FFD8 = SAVE
+	jmp NULL
+	.byte $E4		;$FFE4 = GETIN
+	jmp GETIN
+	.byte 0
+
+;;; ----------------------------------------------------------------------
+
+	.org $FFFA
+
+	.word NONMI
+	.word RESET
+	.word DOBRK
+
+;;; ----------------------------------------------------------------------

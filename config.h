@@ -1,4 +1,4 @@
-// opcodes.h -- the virtual cpu instruction jump array defines
+// config.h -- compile-time feature options for when it gets that far..
 // Copyright (C) 2012 Chris J. Baird <cjb@brushtail.apana.org.au>
 //
 // This program is free software: you can redistribute it and/or modify
@@ -17,13 +17,18 @@
 // derived from unlicenced/BSD-2clause code by Charlie Somerville
 // https://github.com/charliesome/6502
 
+#ifndef CONFIG_H
+#define CONFIG_H
 
-#ifndef OPCODES_H
-#define OPCODES_H
+// select one of the following
+#define USE_USART 1
+#undef USE_USB_CDCACM
 
-#define OP(i,a) (ins_##i), (addrmode_##a)
-#define ILLEGAL (void *)0, (void*)0
+// this might happen one day too..
+#define CPU_6502
+#undef CPU_65C02
+#undef CPU_65SC02
+#undef CPU_M740			/* Mitsubitshi 740, M50734, embedded controllers */
+#undef CPU_65CJB02		/* "..." */
 
-extern void* opcodes[];
-
-#endif	/* OPCODES_H */
+#endif	/* CONFIG_H */

@@ -1,4 +1,4 @@
-// opcodes.h -- the virtual cpu instruction jump array defines
+// usart.h -- public declarations for usart.c
 // Copyright (C) 2012 Chris J. Baird <cjb@brushtail.apana.org.au>
 //
 // This program is free software: you can redistribute it and/or modify
@@ -14,16 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>
 
-// derived from unlicenced/BSD-2clause code by Charlie Somerville
-// https://github.com/charliesome/6502
 
+void usart_init(void);
+void usart_putchar(int c);
+int  usart_getchar(void);
+void usart_putstr(char *str);
 
-#ifndef OPCODES_H
-#define OPCODES_H
-
-#define OP(i,a) (ins_##i), (addrmode_##a)
-#define ILLEGAL (void *)0, (void*)0
-
-extern void* opcodes[];
-
-#endif	/* OPCODES_H */
+/*
+ */

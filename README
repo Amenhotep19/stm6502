@@ -1,53 +1,61 @@
-stm6502 is a (currently NMOS) 6502 CPU simulator for the
-STMicroelectronics STM32F4-Discovery evalutation board, a neat little
-product with a 168MHz Cortex-M4 processor, 128 kB of RAM, and 1 MB of
-Flash rom... for under $20. (See your favourite electronics retailer
-and http://www.st.com/internet/evalboard/product/252419.jsp for more
-details.) And unlike that Tivo-ized PIC32 rubbish, you can hack on it
-with a wholly free development system on a wholly GNU system, without
-Corporate wankers having final control on what you do.
+A basic 6502 CPU simulator for the STM32F4-Discovery evaluation board.
 
 *** Prerequisites
 
-To get yourself up and going on the Disco, you'll first need to install:
+To run this, you will need:
 
-    https://github.com/esden/summon-arm-toolchain
-    https://github.com/texane/stlink
-    http://libopencm3.org
-    cc65.org's cc65
+	A STM32F4-Discovery (I bought mine for just under $20 from
+	au.element14.com, aka Farnell, aka Newark.)
 
-As of early May 2012, you will also need a RS232 level converter with
-breakout connectiors (...the USB cdcacm code isn't ready yet.)
+	A rs232 level converter with breakout connectors
+
+...and install the software from:
+
+	https://github.com/esden/summon-arm-toolchain
+
+	https://github.com/texane/stlink
+
+	http://libopencm3.org
+
+The source code for this project (and a lot of other junk) is available
+from http://kildall.apana.org.au/~cjb/stm32/
+
+This is a OMG INFECTED GPL V3 licenced system, based on software from:
+
+	https://github.com/charliesome/6502 (although heavily modified)
+
+	Jim Butterfield's supermon (via
+	http://www.ffd2.com/fridge/programs/supermon.s)
 
 *** Getting started
 
 Connect the rs232 level converter's Tx line to the Disco's PA2 GPIO
 pin, the Rx to PA3, and its ground to a GND (and possibly Vcc as
-well). Set up a terminal program to 115200 baud 8N1. On my system, I
-find it easiest to do this in another window:
+well). Set up a terminal program to 115200 baud 8N1. On my GNU
+development system, I find it easiest to do this in another window:
 
-	    cu -l ttyUSB0 -115200 --nostop -e -o
+	cu -l ttyUSB0 -115200 --nostop -e -o
 
-Start up stlink's st-util (as root):
+Start up stlink's st-util:
 
-      /usr/src/stlink/gdbserver/st-util fu bar
+	/usr/src/stlink/gdbserver/st-util fu bar
 
 Use arm-*-gdb to load the stm6502.elf file into the Disco:
 
-    $ arm-none-eabi-gdb
-    gdb> load stm6502.elf
-    (I usually have to press 'reset' on the Disco at this point
-    for the next command to work consistently)
-    gdb> run
+	$ arm-none-eabi-gdb
+	gdb> load stm6502.elf
+	(I usually have to press 'reset' on the Disco at this point
+	for the next command to work consistently)
+	gdb> run
 
 ..and then over in your terminal program, you should see a happy
-little 6502 system waiting for you or your code-downloading scripts.
-For code development, I find it easiest to have an RFC2217 server
-controlling the serial port, and then using a Python script to blast
-supermon ":xxxx xx xx xx xx xx" lines down the connection-- it is also
-convienent to load memory directly with gdb if being used 
-("load 6502code/figforth.o 0x20000000"), provided the binary can be
-munged into the correct object format-- see the 6502code/Makefile.
+little ~2.5MHz 6502 system waiting for you or your code-downloading
+scripts. For code development, I find it easiest to have an RFC2217
+server controlling the serial port, and then using a Python script to
+blast supermon ":xxxx xx xx xx xx xx" lines down the connection-- it
+is also convienent to load memory with gdb if being used ("load
+6502code/figforth.o 0x20000000"), provided the binary can be munged
+into the correct object format.
 
 Once the STM32F4 board is programmed, it will just need to be powered
 through its main USB connection to start up the 6502 system.
@@ -55,13 +63,10 @@ through its main USB connection to start up the 6502 system.
 *** Simulated 6502 notes
 
 The system comes up with 64kB of pure unrefined RAM, with a hacked
-copy of Jim Butterfield's supermon copied in from $F800, although that
-can be overwritten later. Character output is written to $FFF0, and
-input by reading the same address. There are no other devices at this
-point, although mass storage on SD Cards is something I'm looking at.
-
-The intention (of my branch, at least) is to have a generic 6502
-system to test code on, not to simulate any particular hardware.
+copy of Jim Butterfield's supermon copied in from $F800. Character
+output is written to $FFF0, and input by reading the same address.
+There are no other devices at this point, although mass storage
+on SD Cards is something I'm looking at.
 
 --
 Chris Baird,, <cjb@brushtail.apana.org.au>

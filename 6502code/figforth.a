@@ -1,9 +1,5 @@
 ;;; -*- mode: asm -*-
-;;; FIG-FORTH is in the Public Domain.
-
-;;; Remember the 1980s? When people charged you up to $400 (in 1980s
-;;; dollars!) to compensate their Hard Work at editing maybe ~200
-;;; lines of existing source code?
+; XEMIT, XKEY, XQTER, XCR, AND RSLW
 
 .setcpu "6502"
 .feature labels_without_colons

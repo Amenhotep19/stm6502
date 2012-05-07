@@ -1,62 +1,92 @@
+// instructions.h -- declare everything in instructions.c, even if it
+// doesn't quite look like it..
+// Copyright (C) 2012 Chris J. Baird <cjb@brushtail.apana.org.au>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful, but
+// WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+// General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <http://www.gnu.org/licenses/>
+
+// derived from unlicenced/BSD-2clause code by Charlie Somerville
+// https://github.com/charliesome/6502
+
+
 #ifndef INSTRUCTIONS_H
 #define INSTRUCTIONS_H
 
-#include <cpu.h>
+#include "cpu.h"
 
 typedef void(*ins_t)(cpu_t*, unsigned short);
 
 #define INS(name) void ins_##name(cpu_t* cpu, unsigned short param)
 
-INS(brk);
-INS(lda);
-INS(ldy);
-INS(ldx);
-INS(rti);
-INS(jmp);
-INS(beq);
-INS(bne);
+INS(adc);
+INS(and);
+INS(asl);
+INS(asl_a);
 INS(bcc);
 INS(bcs);
-INS(bvs);
+INS(beq);
+INS(bit);
 INS(bmi);
-INS(sta);
-INS(sty);
-INS(inx);
-INS(inc);
-INS(iny);
-INS(txa);
-INS(tax);
-INS(and);
+INS(bne);
+INS(bpl);
+INS(brk);
+INS(bvc);
+INS(bvs);
+INS(clc);
+INS(cld);
+INS(cli);
+INS(clv);
 INS(cmp);
 INS(cpx);
 INS(cpy);
-INS(nop);
-INS(adc);
-INS(sbc);
-INS(dey);
-INS(dex);
 INS(dec);
-INS(bpl);
-INS(stx);
-INS(txs);
-INS(tsx);
-INS(tya);
-INS(tay);
+INS(dex);
+INS(dey);
+INS(eor);
+INS(inc);
+INS(inx);
+INS(iny);
+INS(jmp);
 INS(jsr);
-INS(rts);
-INS(cld);
-INS(clc);
-INS(sec);
-INS(php);
+INS(lda);
+INS(ldx);
+INS(ldy);
+INS(lsr);
+INS(lsr_a);
+INS(nop);
+INS(ora);
 INS(pha);
+INS(php);
 INS(pla);
 INS(plp);
-INS(bit);
-INS(lsr_a);
-INS(lsr);
-INS(eor);
-INS(asl);
-INS(asl_a);
-INS(ora);
+INS(rol);
+INS(rol_a);
+INS(ror);
+INS(ror_a);
+INS(rti);
+INS(rts);
+INS(sbc);
+INS(sec);
+INS(sed);
+INS(sei);
+INS(sta);
+INS(stx);
+INS(sty);
+INS(tax);
+INS(tay);
+INS(tsx);
+INS(txa);
+INS(txs);
+INS(tya);
 
-#endif
+#endif	/* INSTRUCTIONS_H */

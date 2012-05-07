@@ -1,13 +1,11 @@
 ;;; -*- asm -*-
-;;; SuperMON - by Jim Butterfield.
-;;;
-;;; Believed to be free to distribute and modify, as this was
-;;; happening with Jim's permission while he was alive.
-;;;
-;;; Modified to suit the stm6502 simulator by Chris Baird
-;;; <cjb@brushtail.apana.org.au> May 2012
-
 .feature labels_without_colons
+;;;
+;;; SuperMON 64
+;;;
+;;; Original source code courtesy Jim Butterfield
+;;;
+;;; load/save routines removed..
 
 pch      = $01			;these must remain in order
 pcl      = $02

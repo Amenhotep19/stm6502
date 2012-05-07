@@ -2,7 +2,7 @@ CA=ca65
 LD=ld65
 OBJCOPY=arm-none-eabi-objcopy 
 
-all:	supermon.o figforth uchess ehbasic
+all:	supermon.o figforth uchess ehbasic wozmon
 
 clean:
 	rm -f *.o *.lst *.bin bin nullmem
@@ -16,7 +16,7 @@ clean:
 	rm -f bin nullmem
 	echo;echo
 
-voodoo_probably_isnt_ready:	voodooloader.o
+voodoo:	voodooloader.o
 	$(CA) -o voodoo.o voodooloader.a
 	$(LD) -t none voodoo.o -o bin
 	dd if=/dev/zero bs=64k count=1 >nullmem
@@ -28,14 +28,14 @@ voodoo_probably_isnt_ready:	voodooloader.o
 
 gpascal_isnt_ready:
 	ca65 gpascal-mini.a
-	ld65 -o gpascal.bin -t none -S 50688 gpascal-mini.o
+	$(LD) -o gpascal.bin -t none -S 50688 gpascal-mini.o
 	rm -f gpascal.o
 	$(OBJCOPY) -I binary -O elf32-littlearm -B arm gpascal.bin gpascal.o
 	echo "Not working yet...";echo;echo
 
 figforth:
 	$(CA) -l figforth.a
-	ld65 -o figforth.bin -t none -S 512 figforth.o
+	$(LD) -o figforth.bin -t none -S 512 figforth.o
 	rm -f figforth.o
 	dd if=/dev/zero bs=64k count=1 >nullmem
 	dd <figforth.bin of=nullmem bs=1 conv=notrunc seek=512
@@ -47,7 +47,7 @@ figforth:
 
 uchess:
 	$(CA) -l uchess.a
-	ld65 -o uchess.bin -t none -S 512 uchess.o
+	$(LD) -o uchess.bin -t none -S 512 uchess.o
 	rm -f uchess.o
 	dd if=/dev/zero bs=64k count=1 >nullmem
 	dd <uchess.bin of=nullmem bs=1 conv=notrunc seek=512
@@ -57,10 +57,20 @@ uchess:
 
 ehbasic:
 	$(CA) -l basic.a
-	ld65 -o basic.bin -t none -S 51200 basic.o
+	$(LD) -o basic.bin -t none -S 51200 basic.o
 	rm -f basic.o
 	dd if=/dev/zero bs=64k count=1 >nullmem
 	dd <basic.bin of=nullmem bs=1 conv=notrunc seek=51200
 	$(OBJCOPY) -I binary -O elf32-littlearm -B arm nullmem basic.o
 	echo "load 6502code/basic.o 0x20000000"
 	echo "g c800";echo;echo
+
+wozmon:
+	$(CA) -l wozmon.a
+	$(LD) -o wozmon.bin -t none -S 61440 wozmon.o
+	rm -f wozmon.o
+	dd if=/dev/zero bs=64k count=1 >nullmem
+	dd <wozmon.bin of=nullmem bs=1 conv=notrunc seek=61440
+	$(OBJCOPY) -I binary -O elf32-littlearm -B arm nullmem wozmon.o
+	echo "load 6502code/wozmon.o 0x20000000"
+	echo "g f000";echo;echo
