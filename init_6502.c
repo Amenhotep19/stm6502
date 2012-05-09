@@ -18,12 +18,14 @@
 // https://github.com/charliesome/6502
 
 
+#include "config.h"
 #include "usart.h"
 #include "init_6502.h"
 
 
 static void writeport_set(cpu_t* cpu, unsigned short addr, unsigned char val);
 static unsigned char readport_get(cpu_t* cpu, unsigned short addr);
+static unsigned char readport_checkstatus(cpu_t* cpu, unsigned short addr);
 
 
 void init_6502(cpu_t* cpu)
@@ -35,12 +37,23 @@ void init_6502(cpu_t* cpu)
   mmap.set = writeport_set;
   mmap.get = readport_get;
   cpu_mmap(cpu, &mmap);
+
+  mmap.address = 0xFFF1;
+  mmap.get = readport_checkstatus;
+  cpu_mmap(cpu, &mmap);
+
+  //TODO: A ctrl-C test (check if character incoming, and if it's Ctrl-c)
 }
 
 
 static void writeport_set(cpu_t* cpu, unsigned short addr, unsigned char val)
 {
+#if defined(USE_USART)
   usart_putchar(val);
+#endif
+#if defined(USE_USB_CDCACM)
+  usb_putchar(val);
+#endif
   if (val == 13)		/* this'll get in the way of xmodem.. */
     usart_putchar(10);
 }
@@ -48,7 +61,23 @@ static void writeport_set(cpu_t* cpu, unsigned short addr, unsigned char val)
 
 static unsigned char readport_get(cpu_t* cpu, unsigned short addr)
 {
-  int c = usart_getchar();
-  // translate unix line feed to carriage return - commonly used by 6502 based computers
+  int c;
+
+#ifdef USE_USART
+  c = usart_getchar();
+#endif
+#ifdef USE_USB_CDCACM
+  c = usb_getchar();
+#endif
+  // translate unix line feed to carriage return - preferred by 6502 computers
   return (unsigned char)(c == 10 ? 13 : c);
+}
+
+
+static unsigned char readport_checkstatus(cpu_t* cpu, unsigned short addr)
+{
+#ifdef USE_USART
+#include <libopencm3/stm32/usart.h>
+  return  ((USART_SR(USART2) & USART_SR_RXNE) > 0 ? 128 : 0);
+#endif
 }

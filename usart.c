@@ -86,6 +86,15 @@ int usart_getchar(void)
 }
 
 
+int usart_getchar_nonblocking(void)
+{
+  if ((USART_SR(USART2) & USART_SR_RXNE) > 0)
+    return usart_recv_blocking(USART2);
+  else
+    return 0;
+}
+
+
 void usart_putstr (char *str)
 {
   char c;

@@ -13,12 +13,6 @@
 ; 	[...0.16 seconds later!]
 ;	ld65 -o gpascal.bin -t none -S 32768 gpascal.o
 ;
-; Or as I have in a Makefile:
-;
-; all:
-;	ca65 -l gpascal.lst gpascal.a
-;	ld65 -o gpascal.prg -t none -S 32759 gpascal.o
-;
 ; As this is a derivative work, you probably won't want to bother Nick
 ; about the hacks I've done to it...
 ;
@@ -69,50 +63,18 @@
 ;
 ;*******************************************************************
 
-;	__C64__ 	= 1
-;	__VIC20__ 	= 1
-	__STM6502__     = 1
-
 ; A 6502 CPU simulator for the STM32F4-Discovery evaluation board.
 ; See http://kildall.apana.org.au/~cjb/stm32/
 
-.ifdef __STM6502__
 .define SYSTEM_START	$C600
 .define TEXT_START	$0280
 .define TEXT_END	$B9FF
 .define SYMTAB_START	$BA00
 .define SYMTAB_END	$C4FF
 .define PCODE_STK_TOP	$C5FE	;CED0
-.define COUT		$F846	;as of 20120502..
-.define	GETIN		$F84A	;as of 20120502
-.define WORK_AREA	$0200
-.endif
-
-;
-.ifdef __C64__
-.define SYSTEM_START	$8000
-.define TEXT_START	$0800
-.define TEXT_END	$7FFF
-.define SYMTAB_START	$C000
-.define SYMTAB_END	$CEFF
-.define COUT		$FFD2
-.define	GETIN		$FFE4
-.define PCODE_STK_TOP	$CFFE	;CED0
-.define WORK_AREA	$02A7
-.endif
-
-; A VIC20 with all RAM expansions..
-.ifdef __VIC20__
-.define SYSTEM_START	19800
-.define TEXT_START	$1200
-.define TEXT_END	19790
-.define SYMTAB_START	$0400
-.define SYMTAB_END	$07BF
-.define PCODE_STK_TOP	$07FE
-.define WORK_AREA	$02A7
-.define COUT		$FFD2
-.define	GETIN		$FFE4
-.endif
+;.define COUT		$F846	;as of 20120502..
+;.define GETIN		$F84A	;as of 20120502
+.define WORK_AREA	$0300
 
 ;************************************************
 ; G-PASCAL COMPILER
@@ -249,19 +211,8 @@
 ; ADDRESS CONSTANTS ETC.
 ;***********************************************
 
-.ifdef __C64__
-	.org (SYSTEM_START - 9)
-	.word (SYSTEM_START - 7)
-	ldx #$37
-	stx $00
-	dex
-	stx $01
-.endif
-.ifdef __VIC20__
-	.org (SYSTEM_START - 2)
-	.word (SYSTEM_START)
-.endif
-;
+	.org SYSTEM_START
+
 BEGIN:	JMP START
         JMP RESTART
 
@@ -270,8 +221,6 @@ BEGIN:	JMP START
 ; Machine-dependent parts
 ;
 ;**********************************************************************
-
-.ifdef __STM6502__
 
 START: 	SEI
         LDX #$FF
@@ -291,16 +240,230 @@ START: 	SEI
         JSR PT
         JMP REST1
 
-CHECK_STOP:
-	lda #1			;Z=1 == break
+CHECK_QUEUE:
+	lda $FFF1
 	rts
 
 
-.endif 				; __STM6502__
+CLEAR_QUEUE:
+	jsr CHECK_QUEUE
+	bne clrq1
+	rts
+clrq1:	lda $FFF0
+	jmp CLEAR_QUEUE
+
+
+COUT:	;; convert petscii to ascii
+	and #127
+	cmp #'a'
+	bcc out1
+	sbc #32
+	bne doout
+out1:	cmp #'Z'
+	bcs out2
+	cmp #'A'
+	bcc out2
+	adc #31
+	bne doout
+out2:	cmp #127
+	bne doout
+	lda #$63
+doout:	sta $fff0
+	rts
+
+GETIN:
+RDKEY:
+	;; convert from ascii to petscii
+	lda $FFF0
+	and #127
+	cmp #'a'
+	bcc rdkey1
+	cmp #'z'+1
+	bcs rdkey1
+	sbc #33
+	bne rdkey2
+rdkey1:	cmp #'A'
+	bcc rdkey2
+	cmp #'Z'+1
+	bcs rdkey2
+	adc #1
+rdkey2:	rts
+
+ST_LOA:
+ST_VFY:
+ST_APP:
+ST_WRI:
+ST_OBJ:	jmp ST_FIL
+
+RESETIO: rts
+
+STOP:	lda #1
+	rts
+
+CHK_KBD:
+	clc
+	rts
+
+LOADIT:
+SAVEIT:
+X_OPEN:
+X_CLOSE:
+X_GET:
+X_PUT:
+	jmp MAIN
+
+
+	CH	= $D3		;cursor column on the current line
+
+	INBUF	= $0200
+GETLN:
+GETLN1: LDY #0
+	sty INBUF
+
+getln2:	lda #13
+	sta INBUF,y
+	lda #0
+	sta INBUF+1,y
+	lda $fff0
+	and #127
+	cmp #13
+	bne getln3
+	tax
+	rts
+
+getln3:	cmp #8
+	bne getln4
+	cpy #0
+	beq getln2
+	sta $fff0
+	lda #32
+	sta $fff0
+	dey
+	lda #8
+	sta $fff0
+	bne getln2
+
+getln4:	sta INBUF,y
+	sta $fff0
+	iny
+	cpy #78
+	bcc getln2
+	dey
+	bne getln2
 
 ; *********************************************************************
 
-.ifdef __CBM64__ || __VIC20__
+.if FOO=253453
+
+;
+	OPEN	= $FFC0
+
+X_OPEN:				;OPEN A FILE
+        JSR PULTOP		;secondary address
+        STA TEMP
+        JSR PULTOP		;device
+        STA TEMP+1
+        JSR PULTOP		;unit
+        LDX TEMP+1		;device
+        LDY TEMP		;secondary address
+        JSR LOA_SVE1		;now SETLFS and process file name
+        JSR OPEN		;now open the file
+        JMP LOADIT2		;and see the result
+
+;
+	CLOSE	= $FFC3
+X_CLOSE:			;CLOSE A FILE
+        JSR PULTOP		;file number
+        JSR CLOSE
+        JMP LOADIT2		;and see the result
+
+;
+	CHKOUT	= $FFC9
+
+X_PUT: 	JSR PULTOP		;file number
+        TAX			;zero (clear channel?)
+        BEQ X_PUT0
+        JSR CHKOUT
+        JMP LOADIT2		;result
+
+;
+X_GET:  JSR PULTOP		;file number
+        TAX			;zero (clear channel?)
+        BEQ X_GET0
+        JSR CHKIN
+        JMP LOADIT2		;result
+
+;
+X_GET0:
+X_PUT0: JSR CLRCHN		;clear channels
+        JMP MAIN
+
+
+	SAVE 	= $FFD8
+
+SAVEIT: JSR LOA_SVE
+        LDX SCE_LIM
+        LDY SCE_LIM+1
+        CPY TEMP+1   ;end less than start?
+        BCC SAVE_ERR ;yes - oops
+        BNE SAVE_OK  ;not equal - must be greater (OK)
+        CPX TEMP     ;high order same - is low order less than start?
+        BCC SAVE_ERR ;yes - oops
+        BEQ SAVE_ERR ;even same is no good
+SAVE_OK:
+        LDA #TEMP
+        JSR SAVE
+        JMP LOADIT2
+
+;
+	SETLFS	= $FFBA
+	SETNAM	= $FFBD
+
+LOADIT:
+        JSR LOA_SVE
+        LDA SCE_LIM		;load/verify flag
+        LDX TEMP
+        LDY TEMP+1		;address
+        JSR LOAD
+        STX CALL_X
+        STY CALL_Y
+LOADIT2:
+	BCS LOADIT3		;error in accumulator
+	JSR READST		;otherwise check READST
+LOADIT3:
+        STA DOS_FLG
+        JMP MAIN		;done
+
+;
+CHK_KBD:
+        CMP #$AA		;COMMODORE/N
+        BNE CHK_NOTN
+        JSR GETIN
+        LDA #0
+        STA DBGFLG
+        SEC
+        RTS
+CHK_NOTN:
+	CMP #$A3		;COMMODORE/T
+        BNE CHK_NOTT
+        JSR GETIN
+        LDA #$80
+        STA DBGFLG
+        STA DCODE
+        SEC
+        RTS
+CHK_NOTT:
+	CMP #$AC		;COMMODORE/D
+        BNE CHK_NOTD
+        JSR GETIN
+        LDA #1
+        STA DBGFLG
+        STA DCODE
+        SEC
+        RTS
+CHK_NOTD:
+	CLC
+        RTS
 
 	;; TODO:
 	;; write a ?interrupt-driving keyboard input buffer (KBD_BUF, QUEUE)
@@ -395,12 +558,6 @@ RESETIO:
 ;
 INITIO: JSR IOINIT
         JSR CLALL
-.ifdef __C64__
-        LDA #47
-        STA $0			;data direction register
-        LDA #46
-        STA $1			;disable Basic
-.endif
         LDA #0
         STA $F8			;de-allocate RS232 buffers
         STA $FA
@@ -571,7 +728,6 @@ ST_WRI: JSR GET_FILE
         LDY P+1
         JMP ST_OBJ1
 ;
-;
 ST_APP: JSR GET_FILE
         LDA #0
         STA VAL_CMP
@@ -648,88 +804,8 @@ LOADIT1:
         RTS
 
 ;
-	SETLFS	= $FFBA
-	SETNAM	= $FFBD
-
-LOADIT:
-        JSR LOA_SVE
-        LDA SCE_LIM		;load/verify flag
-        LDX TEMP
-        LDY TEMP+1		;address
-        JSR LOAD
-        STX CALL_X
-        STY CALL_Y
-LOADIT2:
-	BCS LOADIT3		;error in accumulator
-	JSR READST		;otherwise check READST
-LOADIT3:
-        STA DOS_FLG
-        JMP MAIN		;done
-
-;
-	SAVE 	= $FFD8
-
-SAVEIT: JSR LOA_SVE
-        LDX SCE_LIM
-        LDY SCE_LIM+1
-        CPY TEMP+1   ;end less than start?
-        BCC SAVE_ERR ;yes - oops
-        BNE SAVE_OK  ;not equal - must be greater (OK)
-        CPX TEMP     ;high order same - is low order less than start?
-        BCC SAVE_ERR ;yes - oops
-        BEQ SAVE_ERR ;even same is no good
-SAVE_OK:
-        LDA #TEMP
-        JSR SAVE
-        JMP LOADIT2
-
-;
 SAVE_ERR:
 	JMP CHK_ERR		;start address >= end address
-
-;
-	OPEN	= $FFC0
-
-X_OPEN:				;OPEN A FILE
-        JSR PULTOP		;secondary address
-        STA TEMP
-        JSR PULTOP		;device
-        STA TEMP+1
-        JSR PULTOP		;unit
-        LDX TEMP+1		;device
-        LDY TEMP		;secondary address
-        JSR LOA_SVE1		;now SETLFS and process file name
-        JSR OPEN		;now open the file
-        JMP LOADIT2		;and see the result
-
-;
-	CLOSE	= $FFC3
-X_CLOSE:			;CLOSE A FILE
-        JSR PULTOP		;file number
-        JSR CLOSE
-        JMP LOADIT2		;and see the result
-
-;
-	CHKOUT	= $FFC9
-
-X_PUT: 	JSR PULTOP		;file number
-        TAX			;zero (clear channel?)
-        BEQ X_PUT0
-        JSR CHKOUT
-        JMP LOADIT2		;result
-
-;
-X_GET:  JSR PULTOP		;file number
-        TAX			;zero (clear channel?)
-        BEQ X_GET0
-        JSR CHKIN
-        JMP LOADIT2		;result
-
-;
-X_GET0:
-X_PUT0: JSR CLRCHN		;clear channels
-        JMP MAIN
-
 
 ;
 	CHRIN	= $FFCF
@@ -1470,8 +1546,8 @@ TKN31_C: CMP #'+'
 
 DISP: 	JSR DISPAD1
         JSR PUT_LINE		;display right-justified line no.
-        LDA CH
-        STA LEFTCOL
+        ;LDA CH
+        ;STA LEFTCOL
         LDA #$40
         STA RUNNING
         LDA A5
@@ -2013,30 +2089,30 @@ PR_NTQT:
         PHA
         JSR COUT
         PLA
-        JSR CHECK_STOP
-        BEQ ABORT		;abort list
-        JSR CHECK_QUEUE		;keys in kbd queue?
-        BEQ PR_NOT		;nope
-        LDA KBD_BUF		;get item in queue
-        CMP #$20		;SPACE
-        BNE PR_NOT
-        PLA
-	PHA
-        TYA
-        PHA
-        JSR GETIN		;clear that entry
-PR_WAIT:
-        JSR GETIN		;wait for another
-        BEQ PR_WAIT
-        JSR STOP		;stop key?
-        BNE PR_ONWD
-ABORT:
-        JSR GETIN		;clear keyboard buffer
-        JMP (CTRLC_RT)
-PR_ONWD:
-	PLA
-        TAY
-PR_NOT:
+;        JSR CHECK_STOP
+;        BEQ ABORT		;abort list
+;        JSR CHECK_QUEUE		;keys in kbd queue?
+;        BEQ PR_NOT		;nope
+;        LDA KBD_BUF		;get item in queue
+;        CMP #$20		;SPACE
+;        BNE PR_NOT
+;        PLA
+;	PHA
+;        TYA
+;        PHA
+;        JSR GETIN		;clear that entry
+;PR_WAIT:
+;        JSR GETIN		;wait for another
+;        BEQ PR_WAIT
+;        JSR STOP		;stop key?
+;        BNE PR_ONWD
+;ABORT:
+;        JSR GETIN		;clear keyboard buffer
+;        JMP (CTRLC_RT)
+;PR_ONWD:
+;	PLA
+;        TAY
+;PR_NOT:
         PLA
         LDX XSAVE
         RTS
@@ -3945,8 +4021,8 @@ MAIN_TBL:
         .word ST_DEB
         .byte 'T'
         .word ST_TRA
-        .byte 'F'
-        .word ST_FIL
+        ;.byte 'F'
+        ;.word ST_FIL
         .byte $0
 
 FIL_TBL:
@@ -4110,7 +4186,8 @@ OUT4:
         LSR REG2+1
         LSR REG2+1
 OUT1:
-        SED
+        SED			;EEK!
+
         LDA TEMP
         CLC
         ADC BIN_TBL,X
@@ -4124,6 +4201,7 @@ OUT1:
         LDA VALUE+1
         ADC BIN_TBL+3,X
         STA VALUE+1
+
         CLD
         DEC REG2+1
         BNE OUT1
@@ -4309,36 +4387,6 @@ FINISHD:
         JMP RESTART
 
 ;
-CHK_KBD:
-        CMP #$AA		;COMMODORE/N
-        BNE CHK_NOTN
-        JSR GETIN
-        LDA #0
-        STA DBGFLG
-        SEC
-        RTS
-CHK_NOTN:
-	CMP #$A3		;COMMODORE/T
-        BNE CHK_NOTT
-        JSR GETIN
-        LDA #$80
-        STA DBGFLG
-        STA DCODE
-        SEC
-        RTS
-CHK_NOTT:
-	CMP #$AC		;COMMODORE/D
-        BNE CHK_NOTD
-        JSR GETIN
-        LDA #1
-        STA DBGFLG
-        STA DCODE
-        SEC
-        RTS
-CHK_NOTD:
-	CLC
-        RTS
-
 ;
 OUTCR:  JSR CROUT		;OUTPUT C/R
         JMP MAIN
@@ -4356,10 +4404,10 @@ MAIN:	LDA DBGFLG
 MAIN_2: JSR STOP
         BNE MAIN_3
         JMP BREAK		;stop pressed
-MAIN_3:	JSR CHECK_QUEUE		;key in queue?
-        BEQ MAIN_OK		;no
-        LDA KBD_BUF		;what is it?
-        JSR CHK_KBD
+MAIN_3:	;JSR CHECK_QUEUE		;key in queue?
+        ;BEQ MAIN_OK		;no
+        ;LDA KBD_BUF		;what is it?
+        ;JSR CHK_KBD
 MAIN_OK:
         LDA P
         STA LASTP
@@ -6148,8 +6196,8 @@ LIS_55:	JSR DISPLAY
 DISPLAY:
 ; PRINT LINE
         LDY #0
-        JSR STOP
-        BEQ DIS_RTS
+        ;JSR STOP
+        ;BEQ DIS_RTS
         LDA (FROM),Y
         BEQ DIS_WRAP
         LDA LINE_NO+1

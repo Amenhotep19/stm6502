@@ -28,7 +28,9 @@
 #include "vm.h"
 #include "init_6502.h"
 #include "usart.h"
+#include "usb_cdcacm.h"
 #include "rom.h"
+#include "timer.h"
 
 
 int debug_mode = 0;		/* protip: you can set this while running using gdb */
@@ -36,16 +38,20 @@ int send_rst = 0;		/* ..maybe this as well */
 // int restore_rom = 0;
 int go_slow = 0;		/* 1000000 typical for debugging */
 
-int main(void)
+
+void main(void)
 {
   volatile unsigned int i;
+  int pass=0;
   unsigned char *m, *p;
-  unsigned short before_pc;
 
-#if USE_USART
+#ifdef OCM3_TIMER_EVER_BLOODY_WORKS
+  timer_init();
+#endif
+#ifdef USE_USART
   usart_init();
 #endif
-#if USE_USB_CDCACM
+#ifdef USE_USB_CDCACM
   usb_cdcacm_init();
 #endif
 
@@ -66,7 +72,6 @@ int main(void)
   *m = 0x00;
   m = (unsigned char *)0x2000FFFD;
   *m = 0xF8;
-
 
   while (1)
     {
@@ -97,5 +102,18 @@ int main(void)
       if (go_slow)
 	for (i = go_slow; i > 0; i--)
 	  ;
+
+#if 0
+#ifdef OCM3_TIMER_WORKING
+      // I /wanted/ to use an ISR for this.. but after 2 straight
+      // days of failing to get any libopencm3 code to work, including
+      // their provided examples, I gave up.. -cjb
+      if (++pass > 16)
+	{
+	  usbd_poll();
+	  pass=0;
+	}
+#endif
+#endif
     }
 }

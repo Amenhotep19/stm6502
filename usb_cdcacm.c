@@ -17,7 +17,14 @@
  * along with this library.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+// not working yet, don't get your hopes up.. -cjb
+
+
+#include "config.h"
+#ifdef USE_USB_CDCACM
+
 #include <stdlib.h>
+#include <errno.h>
 #include <libopencm3/stm32/f4/rcc.h>
 #include <libopencm3/stm32/f4/gpio.h>
 #include <libopencm3/usb/usbd.h>
@@ -159,10 +166,11 @@ static const struct usb_config_descriptor config = {
 
 static const char *usb_strings[] = {
   "x",
-  "World Wide Weasels",
-  "stm6502 Terminal",
+  "Black Sphere Technologies",
+  "HID Demo",
   "DEMO",
 };
+
 
 static int cdcacm_control_request(struct usb_setup_data *req, u8 **buf, u16 *len,
 				  void (**complete)(struct usb_setup_data *req))
@@ -188,6 +196,7 @@ static int cdcacm_control_request(struct usb_setup_data *req, u8 **buf, u16 *len
   return 0;
 }
 
+
 static void cdcacm_data_rx_cb(u8 ep)
 {
   (void)ep;
@@ -201,6 +210,7 @@ static void cdcacm_data_rx_cb(u8 ep)
 
   gpio_toggle(GPIOC, GPIO5);
 }
+
 
 static void cdcacm_set_config(u16 wValue)
 {
@@ -216,7 +226,8 @@ static void cdcacm_set_config(u16 wValue)
 				 cdcacm_control_request);
 }
 
-void usb_cdcacm_init(void);
+
+void usb_cdcacm_init(void)
 {
   rcc_clock_setup_hse_3v3(&hse_8mhz_3v3[CLOCK_3V3_120MHZ]);
 
@@ -229,7 +240,57 @@ void usb_cdcacm_init(void);
 
   usbd_init(&otgfs_usb_driver, &dev, &config, usb_strings);
   usbd_register_set_config_callback(cdcacm_set_config);
-
-  while (1)
-    usbd_poll();
 }
+
+
+void usb_putchar(int c)
+{
+  char s[1];
+  int len;
+
+  len = 1;
+  s[0] = c;
+
+  while (usbd_ep_write_packet(0x82, s, len) == 0)
+    ;
+}
+
+
+int usb_getchar(void)
+{
+  char buf[64];
+
+  usbd_ep_read_packet(0x01, buf, 64);
+  return buf[0];
+}
+
+
+void usb_putstr (char *str)
+{
+  char c;
+  int len = strlen(str);
+
+  while (usbd_ep_write_packet(0x82, str, len) == 0)
+    ;
+
+  //while ((c = *str++))
+  //  usb_putchar(c);
+}
+
+
+/* the magic routine that gives us printf() */
+int _write(int file, char *ptr, int len)
+{
+  int i;
+
+  if ((file == 1) || (file == 2))
+    {
+      for (i = 0; i < len; i++)
+	usb_putchar(ptr[i]);
+      return i;
+    }
+  errno = EIO;
+  return -1;
+}
+
+#endif	/* USE_USB_CDCACM */

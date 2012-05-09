@@ -44,7 +44,7 @@ INS(adc)
     }
   else
     {
-      printf("\nHALTING: bcd adc\n");
+      printf("\nHALTING: bcd adc PC=%04X\n", cpu->regs.pc);
       while (1)
 	;
     }
@@ -463,7 +463,7 @@ INS(sbc)
     }
   else
     {
-      printf("\nHALTING: bcd sbc\n");
+      printf("\nHALTING: bcd sbc PC=%04X\n", cpu->regs.pc);
       while (1)
 	;
     }

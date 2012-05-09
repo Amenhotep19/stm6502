@@ -26,11 +26,13 @@ voodoo:	voodooloader.o
 	rm -f bin nullmem
 	echo "Probably not ready yet";echo;echo
 
-gpascal_isnt_ready:
-	ca65 gpascal-mini.a
-	$(LD) -o gpascal.bin -t none -S 50688 gpascal-mini.o
-	rm -f gpascal.o
-	$(OBJCOPY) -I binary -O elf32-littlearm -B arm gpascal.bin gpascal.o
+gpascal:
+	$(CA) gpascal-mini.a
+	$(LD) -o gpascal-mini.bin -t none -S 50688 gpascal-mini.o
+	rm -f gpascal-mini.o
+	dd if=/dev/zero bs=64k count=1 >nullmem
+	dd <gpascal-mini.bin of=nullmem bs=1 conv=notrunc seek=50688
+	$(OBJCOPY) -I binary -O elf32-littlearm -B arm nullmem gpascal.o
 	echo "Not working yet...";echo;echo
 
 figforth:
